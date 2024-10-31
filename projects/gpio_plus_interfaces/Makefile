@@ -37,6 +37,8 @@ ASFLAGS += -fmessage-length=0
 CFLAGS += -mcpu=$(MCU_SPEC)
 CFLAGS += -mthumb
 CFLAGS += -Wall
+CFLAGS += -Wunused-function
+CFLAGS += -Wunused-variable
 CFLAGS += -g
 # (Set error messages to appear on a single line.)
 CFLAGS += -fmessage-length=0
@@ -49,7 +51,8 @@ LSCRIPT = ./$(LD_SCRIPT)
 LFLAGS += -mcpu=$(MCU_SPEC)
 LFLAGS += -mthumb
 LFLAGS += -Wall
-LFLAGS += --specs=nosys.specs
+# LFLAGS += --specs=nosys.specs
+LFLAGS += -specs=nano.specs -lc -lnosys
 LFLAGS += -nostdlib
 LFLAGS += -nostartfiles
 LFLAGS += -lgcc
@@ -57,7 +60,7 @@ LFLAGS += -T$(LSCRIPT)
 LFLAGS += $(LIB_PATH) 
 
 AS_SRC   =  ./startup_stm32f091xc.s
-C_SRC    =  ./main.c
+C_SRC    =  ./main.c ./system_stm32f0xx.c
 
 OBJS  = $(AS_SRC:.S=.o)
 OBJS += $(C_SRC:.c=.o)
@@ -72,7 +75,10 @@ startup_stm32f091xc.o: startup_stm32f091xc.s
 main.o: main.c
 	$(CC) -c $(CFLAGS) $(INC_PATH) $< -o $@
 
-$(TARGET).elf: main.o startup_stm32f091xc.o
+system_stm32f0xx.o: system_stm32f0xx.c
+	$(CC) -c $(CFLAGS) $(INC_PATH) $< -o $@
+
+$(TARGET).elf: main.o startup_stm32f091xc.o system_stm32f0xx.o
 	$(CC) $^ $(LFLAGS) -o $@
 
 $(TARGET).bin: $(TARGET).elf
@@ -88,3 +94,4 @@ clean:
 	rm -f $(TARGET).bin
 	rm -f main.o
 	rm -f startup_stm32f091xc.o
+	rm -f system_stm32f0xx.o
