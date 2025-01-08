@@ -34,7 +34,15 @@ uint32_t    init_clk_reg = 0,
             i2c_rxdr = 0,
             i2c_txdr = 0,
             i2c_isr = 0;
-// char *message;
+
+typedef enum {
+    INTERFACE_I2C_INIT,
+    INTERFACE_I2C,
+    INTERFACE_CLOCK_INIT,
+    INTERFACE_CLOCK,
+} InterfaceType;
+
+void debugRegisters(InterfaceType interface);
 
 void SystemClock_Config(void)
 {
@@ -113,15 +121,9 @@ void I2C_config(void) {
     LL_I2C_Enable(I2C1);
 
     while (!LL_I2C_IsEnabled(I2C1));
-    i2c_timingr = I2C1 -> TIMINGR;
-    i2c_cr1 = I2C1 -> CR1;
-    i2c_cr2 = I2C1 -> CR2;
-    i2c_oar1 = I2C1 -> OAR1;
-    i2c_isr = I2C1 -> ISR;
-    i2c_icr = I2C1 -> ICR;
-    i2c_pecr = I2C1 -> PECR;
-    i2c_rxdr = I2C1 -> RXDR;
-    i2c_txdr = I2C1 -> TXDR;
+
+    debugRegisters(INTERFACE_I2C);
+   
 }
 
 void USART_Transmit(uint8_t *data, uint32_t size) {
@@ -140,15 +142,9 @@ unsigned char USART_Receive(void) {
 
 void I2C_Transmit(uint8_t *data, uint8_t address) {
     LL_I2C_HandleTransfer(I2C1, address, LL_I2C_ADDRESSING_MODE_7BIT, 1, LL_I2C_MODE_AUTOEND, LL_I2C_GENERATE_START_WRITE);
-    // uint32_t ADDCODE = LL_I2C_GetAddressMatchCode(I2C1);
-    // while(!LL_I2C_IsActiveFlag_ADDR(I2C1));
-    // USART_Transmit(ADDCODE, 4);
     LL_I2C_TransmitData8(I2C1, *data);
     while (!LL_I2C_IsActiveFlag_STOP(I2C1));
-    // received_data = LL_I2C_IsActiveFlag_STOP(I2C1);
-    // USART_Transmit(&received_data,sizeof(received_data)-1);
     LL_I2C_ClearFlag_STOP(I2C1);
-
 }
 
 void I2C_Receive(uint8_t address) {
@@ -159,10 +155,303 @@ void I2C_Receive(uint8_t address) {
     LL_I2C_ClearFlag_STOP(I2C1);
     }
 
+void I2C_WriteRegister(uint8_t sensorAddress, uint8_t regAddress, uint8_t data) {
+    LL_I2C_HandleTransfer(I2C1, sensorAddress, LL_I2C_ADDRESSING_MODE_7BIT, 1, LL_I2C_MODE_AUTOEND, LL_I2C_GENERATE_START_WRITE);
+    LL_I2C_TransmitData8(I2C1, regAddress);
+    while (!LL_I2C_IsActiveFlag_TXE(I2C1));
+   
+    LL_I2C_TransmitData8(I2C1, data);
+    while (!LL_I2C_IsActiveFlag_STOP(I2C1));
+    LL_I2C_ClearFlag_STOP(I2C1);
+}
+
+uint8_t I2C_ReadRegister(uint8_t sensorAddress, uint8_t regAddress) {
+    uint8_t data = 0;
+
+    LL_I2C_HandleTransfer(I2C1, sensorAddress << 1, LL_I2C_ADDRESSING_MODE_7BIT, 1, LL_I2C_MODE_SOFTEND, LL_I2C_GENERATE_START_WRITE);
+    LL_I2C_TransmitData8(I2C1, regAddress);
+    while (!LL_I2C_IsActiveFlag_TXE(I2C1));
+    while (!LL_I2C_IsActiveFlag_TC(I2C1));
+
+    LL_I2C_HandleTransfer(I2C1, sensorAddress << 1, LL_I2C_ADDRESSING_MODE_7BIT, 1, LL_I2C_MODE_AUTOEND, LL_I2C_GENERATE_START_READ);
+    while (!LL_I2C_IsActiveFlag_RXNE(I2C1));
+    data = LL_I2C_ReceiveData8(I2C1);
+
+    while (!LL_I2C_IsActiveFlag_STOP(I2C1));
+    LL_I2C_ClearFlag_STOP(I2C1);
+
+    return data;
+}
+
+void scanBus(void) {
+    int hasAddress = 0;
+    sprintf((char*)buffer, "START I2C BUS SCAN!\r\n");
+    USART_Transmit(buffer, strlen((char*)buffer));
+    for (uint8_t address = 0; address < 128; address++) {
+        // sprintf((char*)buffer, "Address 0x%02X\r\n", address);
+        // USART_Transmit(buffer, strlen((char*)buffer));
+        if (hasAddress == 0) {
+            LL_I2C_HandleTransfer(I2C1, (address << 1), LL_I2C_ADDRESSING_MODE_7BIT, 0, LL_I2C_MODE_AUTOEND, LL_I2C_GENERATE_START_WRITE);
+            if (address == 0x77) {
+
+                USART_Transmit((uint8_t*)"-----------------------------------------------\r\n",50);
+                
+                debugRegisters(INTERFACE_I2C);
+            }
+            // Wait for the acknowledge response
+            while (!LL_I2C_IsActiveFlag_STOP(I2C1)) {
+                if (LL_I2C_IsActiveFlag_NACK(I2C1)) {
+                    // No device at this address
+                    LL_I2C_ClearFlag_NACK(I2C1);
+                    break;
+                }
+                if (LL_I2C_IsActiveFlag_ADDR(I2C1)) {
+                    // Device found at this address
+                    sprintf((char*)buffer, "Device found at 0x%02X\n", address);
+                    USART_Transmit(buffer, strlen((char*)buffer));
+                    LL_I2C_ClearFlag_ADDR(I2C1);
+                    hasAddress = 1;
+                    break;
+                }
+            }
+            LL_I2C_ClearFlag_STOP(I2C1); // Clear STOP flag for next address
+            for (volatile int i = 0; i < 100000; i++);
+        }
+    }
+    sprintf((char*)buffer, "SCAN COMPLETED!\r\n");
+    USART_Transmit(buffer, strlen((char*)buffer));
+}
+
+void debugRegisters(InterfaceType interface) {
+
+    USART_Transmit((uint8_t*)"###################################################\r\n",50);
+    sprintf(buffer, "Geting register states for interface: %d  \r\n", interface);
+    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+    switch (interface)
+    {
+    case INTERFACE_I2C:
+
+        i2c_timingr = I2C1 -> TIMINGR;
+        i2c_cr1 = I2C1 -> CR1;
+        i2c_cr2 = I2C1 -> CR2;
+        i2c_oar1 = I2C1 -> OAR1;
+        i2c_isr = I2C1 -> ISR;
+        i2c_icr = I2C1 -> ICR;
+        i2c_pecr = I2C1 -> PECR;
+        i2c_rxdr = I2C1 -> RXDR;
+        i2c_txdr = I2C1 -> TXDR;
+
+        sprintf(buffer, "I2C_TIMINGR: 0x%08lX \r\n", i2c_timingr);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "I2C_CR1: 0x%08lX \r\n", i2c_cr1);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "I2C_CR2: 0x%08lX \r\n", i2c_cr2);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "I2C_OAR1: 0x%08lX \r\n", i2c_oar1);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "I2C_ISR: 0x%08lX \r\n", i2c_isr);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "I2C_ICR: 0x%08lX \r\n", i2c_icr);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "I2C_PECR: 0x%08lX \r\n", i2c_pecr);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "I2C_RXDR: 0x%08lX \r\n", i2c_rxdr);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "I2C_TXDR: 0x%08lX \r\n", i2c_txdr);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        USART_Transmit((uint8_t*)"-----------------------------------------------\r\n",50);
+
+        for (volatile int i = 0; i < 100000; i++);
+        break;
+
+    case INTERFACE_I2C_INIT:
+        sprintf(buffer, "INIT I2C_TIMINGR: 0x%08lX \r\n", init_i2c_timingr);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "INIT I2C_CR1: 0x%08lX \r\n", init_i2c_cr1);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "INIT I2C_CR2: 0x%08lX \r\n", init_i2c_cr2);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "INIT I2C_OAR1: 0x%08lX \r\n", init_i2c_oar1);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "INIT I2C_ISR: 0x%08lX \r\n", init_i2c_isr);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        USART_Transmit((uint8_t*)"-----------------------------------------------\r\n",50);
+
+        for (volatile int i = 0; i < 100000; i++);
+
+        break;
+    
+    case INTERFACE_CLOCK:
+
+        uint32_t clock_reg = RCC->CR;
+        uint32_t clock_conf_reg = RCC->CFGR;
+        uint32_t clock_conf_reg2 = RCC->CFGR2;
+        uint32_t clock_conf_reg3 = RCC->CFGR3;
+
+        sprintf(buffer, "Clock reg: 0x%08lX \r\n", clock_reg);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "Clock config reg: 0x%08lX \r\n", clock_conf_reg);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "Clock config reg2: 0x%08lX \r\n", clock_conf_reg2);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "Clock config reg3: 0x%08lX \r\n", clock_conf_reg3);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        USART_Transmit((uint8_t*)"-----------------------------------------------\r\n",50);
+
+        for (volatile int i = 0; i < 100000; i++);
+
+        //##########################################################################################
+        //############THE SECTION BELOW REPLICATES SystemCoreClockUpdate calculations.##############
+        //##########################################################################################
+
+        // SystemCoreClockUpdate();
+        // uint32_t sys_clk = SystemCoreClock, sys_clk_man = 0;
+        // uint32_t sys_clk_status = 0, sys_clk_pllmull = 0, sys_clk_pllsrc = 0, sys_clk_prediv = 0;
+        
+        // //HSI == 0x00000000U, HSE == 0x00000004U, PLL == 0x00000008U, HSI48 = 0x0000000CU;
+        // sys_clk_status = LL_RCC_GetSysClkSource(); 
+
+        // //RCC_CFGR_PLLMUL -> Maska -> (0xFUL << 18U)
+        // sys_clk_pllmull = LL_RCC_PLL_GetMultiplicator();
+        
+        // //RCC_CFGR_PLLSRC -> Maska -> (0x3UL << 15U)
+        // sys_clk_pllsrc = LL_RCC_PLL_GetMainSource();
+        
+        // //RCC_CFGR2_PREDIV -> Maska -> (0xFUL << 0U)
+        // sys_clk_prediv = LL_RCC_PLL_GetPrediv() +1;
+        // uint32_t modified_mull = (sys_clk_pllmull >> 18) + 2;
+
+        // sys_clk_man = (HSI_VALUE/sys_clk_prediv) * modified_mull;
+        
+        // sprintf(buffer, "SYSCLK: %lu Hz\r\n", sys_clk);
+        // USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        // sprintf(buffer, "SYSCLK SRC: %lu \r\n", sys_clk_status);
+        // USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        // sprintf(buffer, "SYSCLK PLL MUL: %lu \r\n", sys_clk_pllmull);
+        // USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        // sprintf(buffer, "SYSCLK PLL SRC: %lu \r\n", sys_clk_pllsrc);
+        // USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        // sprintf(buffer, "SYSCLK PLL PREDIV: %lu \r\n", sys_clk_prediv);
+        // USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        // sprintf(buffer, "MOD MULL: %lu \r\n", modified_mull);
+        // USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        // sprintf(buffer, "MANUAL CLK: %lu \r\n", sys_clk_man);
+        // USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+        
+        // USART_Transmit((uint8_t*)"-----------------------------------------------\r\n",50);
+
+        // for (volatile int i = 0; i < 100000; i++);
+        break;
+    
+    case INTERFACE_CLOCK_INIT:
+
+        sprintf(buffer, "Initial Clock reg: 0x%08lX \r\n", init_clk_reg);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "Initial Clock config reg: 0x%08lX \r\n", init_clk_conf_reg);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "Initial Clock config reg2: 0x%08lX \r\n", init_clk_conf_reg2);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        sprintf(buffer, "Initial Clock config reg3: 0x%08lX \r\n", init_clk_conf_reg3);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        USART_Transmit((uint8_t*)"-----------------------------------------------\r\n",50);
+
+        for (volatile int i = 0; i < 100000; i++);
+
+        sprintf(buffer, "CFGR after configDomainSys fimcton: 0x%08lX \r\n", cfgr_after_configDomain);
+        USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+        USART_Transmit((uint8_t*)"-----------------------------------------------\r\n",50);
+
+        for (volatile int i = 0; i < 100000; i++);
+        break;
+    
+    default:
+        break;
+    }
+}
+
+void initSensor(uint8_t sensorAddress) {
+    uint8_t BME_680_ID = 0xD0;
+    uint8_t hum_oversampling = 0x01;
+    uint8_t temp_n_pres_oversampling = (0x05 << 2) | (0x02 << 5);
+    uint8_t dbg = 0;
+
+    I2C_Transmit(&BME_680_ID,(sensorAddress << 1));
+    debugRegisters(INTERFACE_I2C);
+    while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
+    I2C_Receive(sensorAddress << 1);
+    sprintf(buffer, "DEBUG 0xD0: 0x%08lX \r\n", received_data);
+    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+    dbg = I2C_ReadRegister(sensorAddress, 0x73);
+    sprintf(buffer, "DEBUG 0x73: 0x%08lX \r\n", dbg);
+    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+    dbg = I2C_ReadRegister(sensorAddress, 0x22);
+    sprintf(buffer, "DEBUG 0x22: 0x%08lX \r\n", dbg);
+    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+    dbg = I2C_ReadRegister(sensorAddress, 0x25);
+    sprintf(buffer, "DEBUG 0x25: 0x%08lX \r\n", dbg);
+    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+    dbg = I2C_ReadRegister(sensorAddress, 0x1F);
+    sprintf(buffer, "DEBUG 0x1F: 0x%08lX \r\n", dbg);
+    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+    //Set humidity oversampling to 1x by writing 0x01 to 0x72
+    I2C_WriteRegister((sensorAddress << 1), 0x72, &hum_oversampling);
+    while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
+
+    //set temperature oversampling to 2x by writing 0x02 to 0x74 << 5 
+    //and set pressure oversampling to 16x by writing 0x05 to 0x74 << 2
+    I2C_WriteRegister((sensorAddress << 1), 0x74, &temp_n_pres_oversampling);
+    while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
+
+   
+    dbg = I2C_ReadRegister(sensorAddress, 0x72);
+    sprintf(buffer, "DEBUG 0x72: 0x%08lX \r\n", dbg);
+    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+    dbg = I2C_ReadRegister(sensorAddress, 0x74);
+    sprintf(buffer, "DEBUG 0x74: 0x%08lX \r\n", dbg);
+    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+
+}
 
 int main(void)
 {
-    // uint8_t BME_680 = 0x77;
+    uint8_t BME_680 = 0x77;
     // uint8_t typedef byte;
     SystemClock_Config();
     LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
@@ -179,8 +468,8 @@ int main(void)
     LL_RCC_ConfigMCO(LL_RCC_MCO1SOURCE_SYSCLK, LL_RCC_MCO1_DIV_1);
     USART_config();
     I2C_config();
-
-
+    
+    debugRegisters(INTERFACE_CLOCK);
  
 
     // Configure outputs
@@ -200,271 +489,64 @@ int main(void)
     //Configure inputs
     setGPIO(GPIOC, LL_GPIO_PIN_13, LL_GPIO_MODE_INPUT,0,LL_GPIO_SPEED_FREQ_LOW,LL_GPIO_PULL_NO,0);
     
+    // scanBus();
 
-    sprintf(buffer, "Initial Clock reg: 0x%08lX \r\n", init_clk_reg);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "Initial Clock config reg: 0x%08lX \r\n", init_clk_conf_reg);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "Initial Clock config reg2: 0x%08lX \r\n", init_clk_conf_reg2);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "Initial Clock config reg3: 0x%08lX \r\n", init_clk_conf_reg3);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    USART_Transmit((uint8_t*)"-----------------------------------------------\r\n",50);
-
-    for (volatile int i = 0; i < 100000; i++);
-
-    sprintf(buffer, "CFGR after configDomainSys fimcton: 0x%08lX \r\n", cfgr_after_configDomain);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    USART_Transmit((uint8_t*)"-----------------------------------------------\r\n",50);
-
-    for (volatile int i = 0; i < 100000; i++);
-
-    uint32_t clock_reg = RCC->CR;
-    uint32_t clock_conf_reg = RCC->CFGR;
-    uint32_t clock_conf_reg2 = RCC->CFGR2;
-    uint32_t clock_conf_reg3 = RCC->CFGR3;
-
-    sprintf(buffer, "Clock reg: 0x%08lX \r\n", clock_reg);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "Clock config reg: 0x%08lX \r\n", clock_conf_reg);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "Clock config reg2: 0x%08lX \r\n", clock_conf_reg2);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "Clock config reg3: 0x%08lX \r\n", clock_conf_reg3);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    USART_Transmit((uint8_t*)"-----------------------------------------------\r\n",50);
-
-    for (volatile int i = 0; i < 100000; i++);
-
-    // SystemCoreClockUpdate();
-    uint32_t sys_clk = SystemCoreClock, sys_clk_man = 0;
-    uint32_t sys_clk_status = 0, sys_clk_pllmull = 0, sys_clk_pllsrc = 0, sys_clk_prediv = 0;
     
-    //HSI == 0x00000000U, HSE == 0x00000004U, PLL == 0x00000008U, HSI48 = 0x0000000CU;
-    sys_clk_status = LL_RCC_GetSysClkSource(); 
 
-    //RCC_CFGR_PLLMUL -> Maska -> (0xFUL << 18U)
-    sys_clk_pllmull = LL_RCC_PLL_GetMultiplicator();
     
-    //RCC_CFGR_PLLSRC -> Maska -> (0x3UL << 15U)
-    sys_clk_pllsrc = LL_RCC_PLL_GetMainSource();
+
+    // // unsigned char buffer[] = "Found active address: \n";
     
-    //RCC_CFGR2_PREDIV -> Maska -> (0xFUL << 0U)
-    sys_clk_prediv = LL_RCC_PLL_GetPrediv() +1;
-    uint32_t modified_mull = (sys_clk_pllmull >> 18) + 2;
-
-    sys_clk_man = (HSI_VALUE/sys_clk_prediv) * modified_mull;
     
-    sprintf(buffer, "SYSCLK: %lu Hz\r\n", sys_clk);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "SYSCLK SRC: %lu \r\n", sys_clk_status);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "SYSCLK PLL MUL: %lu \r\n", sys_clk_pllmull);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "SYSCLK PLL SRC: %lu \r\n", sys_clk_pllsrc);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "SYSCLK PLL PREDIV: %lu \r\n", sys_clk_prediv);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "MOD MULL: %lu \r\n", modified_mull);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "MANUAL CLK: %lu \r\n", sys_clk_man);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-    
-    USART_Transmit((uint8_t*)"-----------------------------------------------\r\n",50);
-
-    for (volatile int i = 0; i < 100000; i++);
-
-    sprintf(buffer, "INIT I2C_TIMINGR: 0x%08lX \r\n", init_i2c_timingr);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "INIT I2C_CR1: 0x%08lX \r\n", init_i2c_cr1);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "INIT I2C_CR2: 0x%08lX \r\n", init_i2c_cr2);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "INIT I2C_OAR1: 0x%08lX \r\n", init_i2c_oar1);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "INIT I2C_ISR: 0x%08lX \r\n", init_i2c_isr);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    USART_Transmit((uint8_t*)"-----------------------------------------------\r\n",50);
-
-    for (volatile int i = 0; i < 100000; i++);
-
-    sprintf(buffer, "I2C_TIMINGR: 0x%08lX \r\n", i2c_timingr);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "I2C_CR1: 0x%08lX \r\n", i2c_cr1);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "I2C_CR2: 0x%08lX \r\n", i2c_cr2);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "I2C_OAR1: 0x%08lX \r\n", i2c_oar1);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "I2C_ISR: 0x%08lX \r\n", i2c_isr);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "I2C_ICR: 0x%08lX \r\n", i2c_icr);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "I2C_PECR: 0x%08lX \r\n", i2c_pecr);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "I2C_RXDR: 0x%08lX \r\n", i2c_rxdr);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "I2C_TXDR: 0x%08lX \r\n", i2c_txdr);
-    USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-    USART_Transmit((uint8_t*)"-----------------------------------------------\r\n",50);
-
-    for (volatile int i = 0; i < 100000; i++);
-
-    // unsigned char message[] = "Found active address: \n";
-    // uint8_t BME_680_ID = 0xD0;
-    unsigned char message[50];
-    int hasAddress = 0;
-    for (uint8_t address = 1; address < 128; address++) {
-        if (hasAddress == 0) {
-            LL_I2C_HandleTransfer(I2C1, (address << 1), LL_I2C_ADDRESSING_MODE_7BIT, 0, LL_I2C_MODE_AUTOEND, LL_I2C_GENERATE_START_WRITE);
-            sprintf((char*)message, "Address 0x%02X registers above!\r\n", address);
-            USART_Transmit(message, strlen((char*)message));
-            if (address == 77) {
-
-                i2c_timingr = I2C1 -> TIMINGR;
-                i2c_cr1 = I2C1 -> CR1;
-                i2c_cr2 = I2C1 -> CR2;
-                i2c_oar1 = I2C1 -> OAR1;
-                i2c_isr = I2C1 -> ISR;
-                i2c_icr = I2C1 -> ICR;
-                i2c_pecr = I2C1 -> PECR;
-                i2c_rxdr = I2C1 -> RXDR;
-                i2c_txdr = I2C1 -> TXDR;
-                
-                sprintf(buffer, "I2C_TIMINGR: 0x%08lX \r\n", i2c_timingr);
-                USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-                sprintf(buffer, "I2C_CR1: 0x%08lX \r\n", i2c_cr1);
-                USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-                sprintf(buffer, "I2C_CR2: 0x%08lX \r\n", i2c_cr2);
-                USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-                sprintf(buffer, "I2C_OAR1: 0x%08lX \r\n", i2c_oar1);
-                USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-                sprintf(buffer, "I2C_ISR: 0x%08lX \r\n", i2c_isr);
-                USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-                sprintf(buffer, "I2C_ICR: 0x%08lX \r\n", i2c_icr);
-                USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-                sprintf(buffer, "I2C_PECR: 0x%08lX \r\n", i2c_pecr);
-                USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-                sprintf(buffer, "I2C_RXDR: 0x%08lX \r\n", i2c_rxdr);
-                USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-                sprintf(buffer, "I2C_TXDR: 0x%08lX \r\n", i2c_txdr);
-                USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
-
-                USART_Transmit((uint8_t*)"-----------------------------------------------\r\n",50);
-
-                sprintf((char*)message, "Address 0x%02X registers above!\r\n", address);
-                USART_Transmit(message, strlen((char*)message));
-            }
-            // Wait for the acknowledge response
-            while (!LL_I2C_IsActiveFlag_STOP(I2C1)) {
-                if (LL_I2C_IsActiveFlag_NACK(I2C1)) {
-                    // No device at this address
-                    LL_I2C_ClearFlag_NACK(I2C1);
-                    break;
-                } else {
-                    sprintf((char*)message, "Address 0x%02X responded with ACK!\r\n", address);
-                    USART_Transmit(message, strlen((char*)message));
-                    for (volatile int i = 0; i < 1000000; i++);
-                }
-                if (LL_I2C_IsActiveFlag_ADDR(I2C1)) {
-                    // Device found at this address
-                    sprintf((char*)message, "Device found at 0x%02X\n", address);
-                    USART_Transmit(message, strlen((char*)message));
-                    LL_I2C_ClearFlag_ADDR(I2C1);
-                    hasAddress = 1;
-                    break;
-                }
-            }
-            LL_I2C_ClearFlag_STOP(I2C1); // Clear STOP flag for next address
-            for (volatile int i = 0; i < 100000; i++);
-        }
-    }
-    // USART_Transmit(message, sizeof(message)-1);
+    // // USART_Transmit(buffer, sizeof(buffer)-1);
     int clicks = 0;
-    // I2C_Transmit(&BME_680_ID,BME_680);
-    // while(!LL_I2C_IsActiveFlag_NACK(I2C1));
-    // USART_Transmit(message, sizeof(message)-1);
-    // I2C_Receive(BME_680);
-    // USART_Transmit(&received_data,sizeof(received_data)-1);
-    // USART_Transmit(message, sizeof(message)-1);
+
+    initSensor(BME_680);
+
+    // uint8_t temp_msb_add = 0x22;
+    // uint8_t temp_lsb_add = 0x23;
+    // uint8_t temp_xlsb_add = 0x24;
+    // uint8_t temp_msb = 0, temp_lsb = 0, temp_xlsb = 0;
+    // uint32_t temperature = 0;
+
+    // I2C_Transmit(&temp_msb_add, (BME_680 << 1));
+    // i2c_isr = I2C1 -> ISR;
+    // sprintf(buffer, "I2C_ISR: 0x%08lX \r\n", i2c_isr);
+    // USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+    // while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
+    // // USART_Transmit(buffer, sizeof(buffer)-1);
+    // I2C_Receive(BME_680 << 1);
+    // temp_msb = received_data;
+    // sprintf(buffer, "TEMP_MSB: 0x%08lX \r\n", temp_msb);
+    // USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+    // I2C_Transmit(&temp_lsb_add, (BME_680 << 1));
+    // while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
+    // // USART_Transmit(buffer, sizeof(buffer)-1);
+    // I2C_Receive(BME_680 << 1);
+    // temp_lsb = received_data;
+    // sprintf(buffer, "TEMP_LSB: 0x%08lX \r\n", temp_lsb);
+    // USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+    // I2C_Transmit(&temp_xlsb_add, (BME_680 << 1));
+    // while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
+    // // USART_Transmit(buffer, sizeof(buffer)-1);
+    // I2C_Receive(BME_680 << 1);
+    // temp_xlsb = received_data;
+    // sprintf(buffer, "TEMP_XLSB: 0x%08lX \r\n", temp_xlsb);
+    // USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
+    // temperature = (temp_xlsb >> 4) | (temp_lsb << 4) | (temp_msb << 12);
+    // sprintf(buffer, "RAW TEMP: %d \r\n", temperature);
+    // USART_Transmit((uint8_t*)buffer, strlen((char*)buffer));
+
 
     // Main loop
     while (1)
     {
-        // uint8_t recv = USART_Receive();
-        // USART_Transmit(&recv,1);
-        int delay;
-        if (!LL_GPIO_IsInputPinSet(GPIOC,LL_GPIO_PIN_13)) {
-            clicks += 1;
-            // LL_GPIO_TogglePin(GPIOA, LL_GPIO_PIN_5);
-
-            // delay = 100000;
-
-        } else {
-            // USART_Transmit(notClick, sizeof(notClick)-1);
-            // LL_GPIO_TogglePin(GPIOA, LL_GPIO_PIN_5);
-            // delay = 500000;
-        }
-        // char count[3];
-        // count[0] = (char)((clicks/10)+'0');
-        // count[1] = (char)((clicks % 10) + '0');
-        // count[2] = '\0';
-        // USART_Transmit(count, sizeof(count)-1);
-
-
-        if (clicks > 0 && clicks < 5) {
-            delay = 1000000;
-        } else if (clicks >= 5 && clicks < 10) {
-            delay = 500000;
-        } else {
-            delay = 100000;
-        }
-
-        if (clicks == 15) {
-            clicks = 0;
-        }
         
         LL_GPIO_TogglePin(GPIOA, LL_GPIO_PIN_5);
 
         // Simple delay
-        for (volatile int i = 0; i < delay; i++);
+        for (volatile int i = 0; i < 1000000; i++);
     }
 
     return 0;
