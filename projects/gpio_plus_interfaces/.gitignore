@@ -1,2 +1,8 @@
 #don't include vscode setup files
 .vscode/
+
+#ignore firmware files.
+
+*.bin
+*.elf
+*.o
