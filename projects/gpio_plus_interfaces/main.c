@@ -435,12 +435,18 @@ void setForcedMode(uint8_t sensorAddress) {
     uint8_t hum_oversampling = 0x1;
     uint8_t temp_n_pres_oversampling = (0x5 << 2) | (0x2 << 5);
     uint8_t gas_heat_duration = 0x59;
+    uint8_t ctrl_hum = 0x72;
+    uint8_t ctrl_meas = 0x74;
+    uint8_t gas_wait_0 = 0x64;
+    uint8_t res_heat_0 = 0x5A;
+    uint8_t ctrl_gas_1 = 0x71;
+    int heaterTargetTemp = 300;
 
     //Set humidity oversampling to 1x by writing 0x01 to 0x72
     sprintf(buffer, "Write 0x01 to 0x72.\r\n");
     USART_Transmit((const char*)buffer, strlen((char*)buffer));
 
-    I2C_WriteRegister((sensorAddress << 1), 0x72, hum_oversampling);
+    I2C_WriteRegister((sensorAddress << 1), ctrl_hum, hum_oversampling);
     while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
     // for (volatile int i = 0; i < 1000000; i++);
 
@@ -448,21 +454,21 @@ void setForcedMode(uint8_t sensorAddress) {
     //and set pressure oversampling to 16x by writing 0x5 to 0x74 << 2
     sprintf(buffer, "Write (0x5 << 2) | (0x2 << 5) to 0x74.\r\n");
     USART_Transmit((const char*)buffer, strlen((char*)buffer));
-    I2C_WriteRegister((sensorAddress << 1), 0x74, temp_n_pres_oversampling);
+    I2C_WriteRegister((sensorAddress << 1), ctrl_meas, temp_n_pres_oversampling);
     while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
     // for (volatile int i = 0; i < 1000000; i++);
 
     //set gas sensor hot plate temperature and heating duration.
     sprintf(buffer, "Write 0x59 to 0x64.\r\n");
     USART_Transmit((const char*)buffer, strlen((char*)buffer));
-    I2C_WriteRegister((sensorAddress << 1), 0x64,gas_heat_duration );
+    I2C_WriteRegister((sensorAddress << 1), gas_wait_0,gas_heat_duration );
     while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
     // for (volatile int i = 0; i < 1000000; i++);
 
     //set heater set-point with target resistance
     sprintf(buffer, "Read registers and calculate res_heat value.\r\n");
     USART_Transmit((const char*)buffer, strlen((char*)buffer));
-    I2C_WriteRegister((sensorAddress << 1), 0x5A, calc_res_heat_val(300,sensorAddress));
+    I2C_WriteRegister((sensorAddress << 1), res_heat_0, calc_res_heat_val(heaterTargetTemp,sensorAddress));
     while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
     sprintf(buffer, "Write calculated res_heat to 0x5A.\r\n");
     USART_Transmit((const char*)buffer, strlen((char*)buffer));
@@ -471,19 +477,24 @@ void setForcedMode(uint8_t sensorAddress) {
     //set nb_conv value to confimr gas heater settings and set run_gas_1 to 1 to enable the heater
     sprintf(buffer, "Write (0x00 | (1 << 4)) to 0x71.\r\n");
     USART_Transmit((const char*)buffer, strlen((char*)buffer));
-    I2C_WriteRegister((sensorAddress << 1), 0x71,(0x00 | (1 << 4)));
+    I2C_WriteRegister((sensorAddress << 1), ctrl_gas_1,(0x00 | (1 << 4)));
     while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
     // for (volatile int i = 0; i < 1000000; i++);
 
 
 }
 
-void initSensor(uint8_t sensorAddress) {
+bool initSensor(uint8_t sensorAddress) {
     uint8_t BME_680_ID = 0xD0;
     received_data = I2C_ReadRegister(sensorAddress,BME_680_ID);
     // debugRegisters(INTERFACE_I2C);
     sprintf(buffer, "INIT SENSOR DEBUG 0xD0: 0x%02X \r\n", received_data);
     USART_Transmit((const char*)buffer, strlen((char*)buffer));
+    if (received_data == 0x61) {
+        return true;
+    } else {
+        return false;
+    }
 
 }
 
@@ -532,45 +543,50 @@ int main(void)
     sprintf(buffer, "START SENSOR INIT \r\n");
     USART_Transmit((const char*)buffer, strlen((char*)buffer));
 
-    initSensor(BME_680);
+    if (initSensor(BME_680)) {
+
+        sprintf(buffer, "SENSOR INIT COMPLETE. START FORCED MODE \r\n");
+        USART_Transmit((const char*)buffer, strlen((char*)buffer));
+        
+        setForcedMode(BME_680);
     
-    sprintf(buffer, "SENSOR INIT COMPLETE. START FORCED MODE \r\n");
-    USART_Transmit((const char*)buffer, strlen((char*)buffer));
+        sprintf(buffer, "FORCED MODE COMPLETE. MAKE 1 MEASUREMENT.\r\n");
+        USART_Transmit((const char*)buffer, strlen((char*)buffer));
     
-    setForcedMode(BME_680);
-
-    sprintf(buffer, "FORCED MODE COMPLETE. MAKE 1 MEASUREMENT.\r\n");
-    USART_Transmit((const char*)buffer, strlen((char*)buffer));
-
-    sprintf(buffer, "Write 0x01 to 0x74.\r\n");
-    USART_Transmit((const char*)buffer, strlen((char*)buffer));
-    //change measuring mode to enable one forced measurment cycle.
-    I2C_WriteRegister((BME_680 << 1), 0x74, 0x01);
-    while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
-
-    sprintf(buffer, "MODE CHANGED. READ TEMP VALUE.\r\n");
-    USART_Transmit((const char*)buffer, strlen((char*)buffer));
-
-    uint8_t temp_msb_add = 0x22;
-    uint8_t temp_lsb_add = 0x23;
-    uint8_t temp_xlsb_add = 0x24;
-
-    uint8_t temp_msb = I2C_ReadRegister(BME_680, temp_msb_add);
-    sprintf(buffer, "DEBUG temp_msb: 0x%02X \r\n", temp_msb);
-    USART_Transmit((const char*)buffer, strlen((char*)buffer));
+        sprintf(buffer, "Write 0x01 to 0x74.\r\n");
+        USART_Transmit((const char*)buffer, strlen((char*)buffer));
+        //change measuring mode to enable one forced measurment cycle.
+        I2C_WriteRegister((BME_680 << 1), 0x74, 0x01);
+        while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
     
-    uint8_t temp_lsb = I2C_ReadRegister(BME_680, temp_lsb_add);
-    sprintf(buffer, "DEBUG temp_lsb: 0x%02X \r\n", temp_lsb);
-    USART_Transmit((const char*)buffer, strlen((char*)buffer));
+        sprintf(buffer, "MODE CHANGED. READ TEMP VALUE.\r\n");
+        USART_Transmit((const char*)buffer, strlen((char*)buffer));
     
-    uint8_t temp_xlsb = I2C_ReadRegister(BME_680, temp_xlsb_add);
-    sprintf(buffer, "DEBUG temp_xlsb: 0x%02X \r\n", temp_xlsb);
-    USART_Transmit((const char*)buffer, strlen((char*)buffer));
+        uint8_t temp_msb_add = 0x22;
+        uint8_t temp_lsb_add = 0x23;
+        uint8_t temp_xlsb_add = 0x24;
     
-    uint32_t temperature = (temp_msb << 12) | (temp_lsb << 4) | temp_xlsb;
-
-    sprintf(buffer, "DEBUG temperature: 0x%08lX \r\n", temperature);
-    USART_Transmit((const char*)buffer, strlen((char*)buffer));
+        uint8_t temp_msb = I2C_ReadRegister(BME_680, temp_msb_add);
+        sprintf(buffer, "DEBUG temp_msb: 0x%02X \r\n", temp_msb);
+        USART_Transmit((const char*)buffer, strlen((char*)buffer));
+        
+        uint8_t temp_lsb = I2C_ReadRegister(BME_680, temp_lsb_add);
+        sprintf(buffer, "DEBUG temp_lsb: 0x%02X \r\n", temp_lsb);
+        USART_Transmit((const char*)buffer, strlen((char*)buffer));
+        
+        uint8_t temp_xlsb = I2C_ReadRegister(BME_680, temp_xlsb_add);
+        sprintf(buffer, "DEBUG temp_xlsb: 0x%02X \r\n", temp_xlsb);
+        USART_Transmit((const char*)buffer, strlen((char*)buffer));
+        
+        uint32_t temperature = (temp_msb << 12) | (temp_lsb << 4) | temp_xlsb;
+    
+        sprintf(buffer, "DEBUG temperature: 0x%08lX \r\n", temperature);
+        USART_Transmit((const char*)buffer, strlen((char*)buffer));
+    } else {
+        sprintf(buffer, "Sensor initialization error. Check I2C data bus and sensor\r\n");
+        USART_Transmit((const char*)buffer, strlen((char*)buffer));
+    }
+    
 
 
     // Main loop
