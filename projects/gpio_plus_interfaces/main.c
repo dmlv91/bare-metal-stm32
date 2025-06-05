@@ -11,6 +11,7 @@
 #include "stm32f0xx_ll_i2c.h"
 #include "stm32f0xx_ll_rcc.h"
 
+const uint8_t sensorAddress = 0x77;
 uint8_t received_data;
 char buffer[100];
 uint32_t    init_clk_reg = 0, 
@@ -502,6 +503,53 @@ void setForcedMode(uint8_t sensorAddress) {
 
 }
 
+float calcTemperature(uint32_t temp_adc) {
+    float var1;
+    float var2;
+    float t_fine;
+    float temp_comp;
+
+    uint8_t par_t1_msb = I2C_ReadRegister(sensorAddress,0xEA);
+    uint8_t par_t1_lsb = I2C_ReadRegister(sensorAddress,0xE9);
+    uint8_t par_t2_msb = I2C_ReadRegister(sensorAddress,0x8B);
+    uint8_t par_t2_lsb = I2C_ReadRegister(sensorAddress,0x8A);
+    uint16_t par_t1 = par_t1_lsb | (par_t1_msb << 8);
+    uint16_t par_t2 = par_t2_lsb | (par_t2_msb << 8);
+    uint8_t par_t3 = I2C_ReadRegister(sensorAddress,0x8C);
+
+    var1 = (((double)temp_adc/16384.0f) - ((double)par_t1/1024.0f))*(double)par_t2;
+    var2 = ((((double)temp_adc/131072.0f)-((double)par_t1/8192.0f))
+        *(((double)temp_adc/131072.0f)- ((double)par_t1/8192.0f)))
+        *((double)par_t3*16.0f);
+    t_fine = var1+var2;
+    temp_comp = t_fine/5120.0;
+
+    return temp_comp;
+}
+
+int calcIntTemperature(uint32_t temp_adc) {
+    int var1;
+    int var2;
+    int var3;
+
+    uint8_t par_t1_msb = I2C_ReadRegister(sensorAddress,0xEA);
+    uint8_t par_t1_lsb = I2C_ReadRegister(sensorAddress,0xE9);
+    uint8_t par_t2_msb = I2C_ReadRegister(sensorAddress,0x8B);
+    uint8_t par_t2_lsb = I2C_ReadRegister(sensorAddress,0x8A);
+    uint16_t par_t1 = par_t1_lsb | (par_t1_msb << 8);
+    uint16_t par_t2 = par_t2_lsb | (par_t2_msb << 8);
+    uint8_t par_t3 = I2C_ReadRegister(sensorAddress,0x8C);
+
+    var1 = ((int32_t)temp_adc >> 3) - ((int32_t)par_t1 << 1);
+    var2 = (var1*(int32_t)par_t2) >> 11;
+    var3 = ((((var1 >> 1)* (var1 >> 1))>>12)*((int32_t)par_t3 << 4)) >> 14;
+    int t_fine = var2+var3;
+    int temp_comp = ((t_fine*5)+128) >> 8;
+
+    return temp_comp;
+
+}
+
 bool initSensor(uint8_t sensorAddress) {
     uint8_t BME_680_ID = 0xD0;
     received_data = I2C_ReadRegister(sensorAddress,BME_680_ID);
@@ -518,7 +566,7 @@ bool initSensor(uint8_t sensorAddress) {
 
 int main(void)
 {
-    uint8_t BME_680 = 0x77;
+    
     // uint8_t typedef byte;
     SystemClock_Config();
     LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
@@ -561,12 +609,12 @@ int main(void)
     sprintf(buffer, "START SENSOR INIT \r\n");
     USART_Transmit((const char*)buffer, strlen((char*)buffer));
 
-    if (initSensor(BME_680)) {
+    if (initSensor(sensorAddress)) {
 
         sprintf(buffer, "SENSOR INIT COMPLETE. START FORCED MODE \r\n");
         USART_Transmit((const char*)buffer, strlen((char*)buffer));
         
-        setForcedMode(BME_680);
+        setForcedMode(sensorAddress);
     
         sprintf(buffer, "FORCED MODE COMPLETE. MAKE 1 MEASUREMENT.\r\n");
         USART_Transmit((const char*)buffer, strlen((char*)buffer));
@@ -574,11 +622,11 @@ int main(void)
         sprintf(buffer, "Write 0x01 to 0x74.\r\n");
         USART_Transmit((const char*)buffer, strlen((char*)buffer));
         //change measuring mode to enable one forced measurment cycle (Set only first bit).
-        uint8_t ctrl_meas_val = I2C_ReadRegister(BME_680,ctrl_meas);
-        I2C_WriteRegister((BME_680 << 1), ctrl_meas, (ctrl_meas_val |= (1 << 0)));
+        uint8_t ctrl_meas_val = I2C_ReadRegister(sensorAddress,ctrl_meas);
+        I2C_WriteRegister((sensorAddress << 1), ctrl_meas, (ctrl_meas_val |= (1 << 0)));
         while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
 
-        dbg = I2C_ReadRegister(BME_680,ctrl_meas);
+        dbg = I2C_ReadRegister(sensorAddress,ctrl_meas);
         sprintf(buffer, "ctrl_meas--------->: 0x%02X \r\n", dbg);
         USART_Transmit((const char*)buffer, strlen((char*)buffer));
 
@@ -586,9 +634,9 @@ int main(void)
         USART_Transmit((const char*)buffer, strlen((char*)buffer));
 
         uint8_t meas_status_0 = 0x1D;
-        uint8_t newDataFlag = I2C_ReadRegister(BME_680, meas_status_0);
+        uint8_t newDataFlag = I2C_ReadRegister(sensorAddress, meas_status_0);
         //print only 7th bit. If new data exists, 0x8 will be returned, otherwise 0.
-        sprintf(buffer, "New Data: 0x%02X \r\n", (newDataFlag & (1<<7)));
+        sprintf(buffer, "New Data: 0x%02X \r\n", newDataFlag );
         USART_Transmit((const char*)buffer, strlen((char*)buffer));
     
         sprintf(buffer, "MODE CHANGED. READ TEMP VALUE.\r\n");
@@ -598,15 +646,15 @@ int main(void)
         uint8_t temp_lsb_add = 0x23;
         uint8_t temp_xlsb_add = 0x24;
     
-        uint8_t temp_msb = I2C_ReadRegister(BME_680, temp_msb_add);
+        uint8_t temp_msb = I2C_ReadRegister(sensorAddress, temp_msb_add);
         sprintf(buffer, "DEBUG temp_msb: 0x%02X \r\n", temp_msb);
         USART_Transmit((const char*)buffer, strlen((char*)buffer));
         
-        uint8_t temp_lsb = I2C_ReadRegister(BME_680, temp_lsb_add);
+        uint8_t temp_lsb = I2C_ReadRegister(sensorAddress, temp_lsb_add);
         sprintf(buffer, "DEBUG temp_lsb: 0x%02X \r\n", temp_lsb);
         USART_Transmit((const char*)buffer, strlen((char*)buffer));
         
-        uint8_t temp_xlsb = I2C_ReadRegister(BME_680, temp_xlsb_add);
+        uint8_t temp_xlsb = I2C_ReadRegister(sensorAddress, temp_xlsb_add);
         sprintf(buffer, "DEBUG temp_xlsb: 0x%02X \r\n", temp_xlsb);
         USART_Transmit((const char*)buffer, strlen((char*)buffer));
         
@@ -619,6 +667,14 @@ int main(void)
         temperature = temperature >> (20-17);
     
         sprintf(buffer, "DEBUG temperature: 0x%08lX \r\n", temperature);
+        USART_Transmit((const char*)buffer, strlen((char*)buffer));
+
+        int realTemp = calcIntTemperature(temperature);
+        sprintf(buffer, "Real temperature:  %d\r\n", temperature);
+        USART_Transmit((const char*)buffer, strlen((char*)buffer));
+
+        uint8_t config_val = I2C_ReadRegister(sensorAddress,0x75);
+        sprintf(buffer, "DEBUG config: 0x%02X \r\n", config_val);
         USART_Transmit((const char*)buffer, strlen((char*)buffer));
         
     } else {
