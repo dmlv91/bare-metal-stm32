@@ -540,6 +540,13 @@ int calcIntTemperature(uint32_t temp_adc) {
     uint16_t par_t2 = par_t2_lsb | (par_t2_msb << 8);
     uint8_t par_t3 = I2C_ReadRegister(sensorAddress,0x8C);
 
+    sprintf(buffer, "par_t1: 0x%02X \r\n", par_t1);
+    USART_Transmit((const char*)buffer, strlen((char*)buffer));
+    sprintf(buffer, "par_t2: 0x%02X \r\n", par_t2);
+    USART_Transmit((const char*)buffer, strlen((char*)buffer));
+    sprintf(buffer, "par_t3: 0x%02X \r\n", par_t3);
+    USART_Transmit((const char*)buffer, strlen((char*)buffer));
+
     var1 = ((int32_t)temp_adc >> 3) - ((int32_t)par_t1 << 1);
     var2 = (var1*(int32_t)par_t2) >> 11;
     var3 = ((((var1 >> 1)* (var1 >> 1))>>12)*((int32_t)par_t3 << 4)) >> 14;
@@ -664,13 +671,13 @@ int main(void)
         USART_Transmit((const char*)buffer, strlen((char*)buffer));
         
         //As the data resolution depends on osrs_t value (16bits + (osrs_t - 1)) 3 lower bits are discarded because osrs_t is set to 2. 
-        temperature = temperature >> (20-17);
+        temperature = temperature >> 3;
     
         sprintf(buffer, "DEBUG temperature: 0x%08lX \r\n", temperature);
         USART_Transmit((const char*)buffer, strlen((char*)buffer));
 
         int realTemp = calcIntTemperature(temperature);
-        sprintf(buffer, "Real temperature:  %d\r\n", temperature);
+        sprintf(buffer, "Real temperature:  %d\r\n", realTemp);
         USART_Transmit((const char*)buffer, strlen((char*)buffer));
 
         uint8_t config_val = I2C_ReadRegister(sensorAddress,0x75);
