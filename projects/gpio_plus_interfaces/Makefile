@@ -60,7 +60,7 @@ LFLAGS += -T$(LSCRIPT)
 LFLAGS += $(LIB_PATH) 
 
 AS_SRC   =  ./startup_stm32f091xc.s
-C_SRC    =  ./main.c ./system_stm32f0xx.c
+C_SRC    =  ./main.c ./system_stm32f0xx.c ./utils/clock.c
 
 OBJS  = $(AS_SRC:.S=.o)
 OBJS += $(C_SRC:.c=.o)
@@ -78,7 +78,10 @@ main.o: main.c
 system_stm32f0xx.o: system_stm32f0xx.c
 	$(CC) -c $(CFLAGS) $(INC_PATH) $< -o $@
 
-$(TARGET).elf: main.o startup_stm32f091xc.o system_stm32f0xx.o
+utils/clock.o: utils/clock.c
+	$(CC) -c $(CFLAGS) $(INC_PATH) $< -o $@
+	
+$(TARGET).elf: main.o startup_stm32f091xc.o system_stm32f0xx.o utils/clock.o
 	$(CC) $^ $(LFLAGS) -o $@
 
 $(TARGET).bin: $(TARGET).elf

@@ -10,16 +10,19 @@
 #include "stm32f0xx_ll_usart.h"
 #include "stm32f0xx_ll_i2c.h"
 #include "stm32f0xx_ll_rcc.h"
+#include "utils/clock.h"
+
+#define BME680_I2C_ADDR 0x77
 
 const uint8_t sensorAddress = 0x77;
 uint8_t received_data;
 char buffer[100];
-uint32_t    init_clk_reg = 0, 
-            init_clk_conf_reg = 0, 
-            init_clk_conf_reg2 = 0, 
-            init_clk_conf_reg3 = 0,
-            cfgr_after_configDomain = 0,
-            init_i2c_timingr = 0,
+// uint32_t    init_clk_reg = 0, 
+//             init_clk_conf_reg = 0, 
+//             init_clk_conf_reg2 = 0, 
+//             init_clk_conf_reg3 = 0,
+//             cfgr_after_configDomain = 0,
+uint32_t    init_i2c_timingr = 0,
             init_i2c_cr1 = 0,
             init_i2c_cr2 = 0,
             init_i2c_oar1 = 0,
@@ -56,44 +59,44 @@ typedef enum {
 
 void debugRegisters(InterfaceType interface);
 
-void SystemClock_Config(void)
-{
-    init_clk_reg = RCC->CR;
-    init_clk_conf_reg = RCC->CFGR;
-    init_clk_conf_reg2 = RCC->CFGR2;
-    init_clk_conf_reg3 = RCC->CFGR3;
-    LL_RCC_PLL_Disable();
-    LL_FLASH_SetLatency(LL_FLASH_LATENCY_1);
-    // while(LL_RCC_PLL_IsReady() != 1);
+// void SystemClock_Config(void)
+// {
+//     init_clk_reg = RCC->CR;
+//     init_clk_conf_reg = RCC->CFGR;
+//     init_clk_conf_reg2 = RCC->CFGR2;
+//     init_clk_conf_reg3 = RCC->CFGR3;
+//     LL_RCC_PLL_Disable();
+//     LL_FLASH_SetLatency(LL_FLASH_LATENCY_1);
+//     // while(LL_RCC_PLL_IsReady() != 1);
 
-    LL_RCC_HSI_Enable();
-    while(LL_RCC_HSI_IsReady() != 1)
-    {
-    };
+//     LL_RCC_HSI_Enable();
+//     while(LL_RCC_HSI_IsReady() != 1)
+//     {
+//     };
 
-    LL_RCC_PLL_ConfigDomain_SYS(LL_RCC_PLLSOURCE_HSI, LL_RCC_PREDIV_DIV_2, LL_RCC_PLL_MUL_12);
+//     LL_RCC_PLL_ConfigDomain_SYS(LL_RCC_PLLSOURCE_HSI, LL_RCC_PREDIV_DIV_2, LL_RCC_PLL_MUL_12);
 
-    cfgr_after_configDomain = RCC -> CFGR;
+//     cfgr_after_configDomain = RCC -> CFGR;
 
-    //set PLLXTPRE bit to 1 as the ConfigDomain_SYS function apparently does not.
-    RCC->CFGR |= (1 << 17);
-    RCC->CFGR |= (10 << 18);
+//     //set PLLXTPRE bit to 1 as the ConfigDomain_SYS function apparently does not.
+//     RCC->CFGR |= (1 << 17);
+//     RCC->CFGR |= (10 << 18);
 
-    LL_RCC_PLL_Enable();
-    while(LL_RCC_PLL_IsReady() != 1);
-
-
-    LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_PLL);
-
-    while(LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_PLL);
-
-    LL_RCC_SetAPB1Prescaler(LL_RCC_APB1_DIV_1);
-    LL_RCC_SetAHBPrescaler(LL_RCC_SYSCLK_DIV_1);
+//     LL_RCC_PLL_Enable();
+//     while(LL_RCC_PLL_IsReady() != 1);
 
 
-    SystemCoreClockUpdate();
-    LL_InitTick(SystemCoreClock, 1000U);
-}
+//     LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_PLL);
+
+//     while(LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_PLL);
+
+//     LL_RCC_SetAPB1Prescaler(LL_RCC_APB1_DIV_1);
+//     LL_RCC_SetAHBPrescaler(LL_RCC_SYSCLK_DIV_1);
+
+
+//     SystemCoreClockUpdate();
+//     LL_InitTick(SystemCoreClock, 1000U);
+// }
 
 
 void _init(void) {}
@@ -367,31 +370,31 @@ void debugRegisters(InterfaceType interface) {
             // for (volatile int i = 0; i < 100000; i++);
             break;
         
-        case INTERFACE_CLOCK_INIT:
+        // case INTERFACE_CLOCK_INIT:
 
-            sprintf(buffer, "Initial Clock reg: 0x%08lX \r\n", init_clk_reg);
-            USART_Transmit((const char*)buffer, strlen((char*)buffer));
+        //     sprintf(buffer, "Initial Clock reg: 0x%08lX \r\n", init_clk_reg);
+        //     USART_Transmit((const char*)buffer, strlen((char*)buffer));
 
-            sprintf(buffer, "Initial Clock config reg: 0x%08lX \r\n", init_clk_conf_reg);
-            USART_Transmit((const char*)buffer, strlen((char*)buffer));
+        //     sprintf(buffer, "Initial Clock config reg: 0x%08lX \r\n", init_clk_conf_reg);
+        //     USART_Transmit((const char*)buffer, strlen((char*)buffer));
 
-            sprintf(buffer, "Initial Clock config reg2: 0x%08lX \r\n", init_clk_conf_reg2);
-            USART_Transmit((const char*)buffer, strlen((char*)buffer));
+        //     sprintf(buffer, "Initial Clock config reg2: 0x%08lX \r\n", init_clk_conf_reg2);
+        //     USART_Transmit((const char*)buffer, strlen((char*)buffer));
 
-            sprintf(buffer, "Initial Clock config reg3: 0x%08lX \r\n", init_clk_conf_reg3);
-            USART_Transmit((const char*)buffer, strlen((char*)buffer));
+        //     sprintf(buffer, "Initial Clock config reg3: 0x%08lX \r\n", init_clk_conf_reg3);
+        //     USART_Transmit((const char*)buffer, strlen((char*)buffer));
 
-            USART_Transmit((const char*)"-----------------------------------------------\r\n",50);
+        //     USART_Transmit((const char*)"-----------------------------------------------\r\n",50);
 
-            for (volatile int i = 0; i < 100000; i++);
+        //     for (volatile int i = 0; i < 100000; i++);
 
-            sprintf(buffer, "CFGR after configDomainSys fimcton: 0x%08lX \r\n", cfgr_after_configDomain);
-            USART_Transmit((const char*)buffer, strlen((char*)buffer));
+        //     sprintf(buffer, "CFGR after configDomainSys fimcton: 0x%08lX \r\n", cfgr_after_configDomain);
+        //     USART_Transmit((const char*)buffer, strlen((char*)buffer));
 
-            USART_Transmit((const char*)"-----------------------------------------------\r\n",50);
+        //     USART_Transmit((const char*)"-----------------------------------------------\r\n",50);
 
-            for (volatile int i = 0; i < 100000; i++);
-            break;
+        //     for (volatile int i = 0; i < 100000; i++);
+        //     break;
         
         default:
             break;
@@ -575,7 +578,8 @@ int main(void)
 {
     
     // uint8_t typedef byte;
-    SystemClock_Config();
+    // SystemClock_Config();
+    initClock();
     LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
     LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
     LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOC);
