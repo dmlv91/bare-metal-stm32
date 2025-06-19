@@ -60,7 +60,7 @@ LFLAGS += -T$(LSCRIPT)
 LFLAGS += $(LIB_PATH) 
 
 AS_SRC   =  ./startup_stm32f091xc.s
-C_SRC    =  ./main.c ./system_stm32f0xx.c ./utils/clock.c
+C_SRC    =  ./main.c ./system_stm32f0xx.c ./utils/clock.c ./utils/gpio.c ./utils/uart.c ./utils/i2c.c ./utils/debug.c
 
 OBJS  = $(AS_SRC:.S=.o)
 OBJS += $(C_SRC:.c=.o)
@@ -80,8 +80,20 @@ system_stm32f0xx.o: system_stm32f0xx.c
 
 utils/clock.o: utils/clock.c
 	$(CC) -c $(CFLAGS) $(INC_PATH) $< -o $@
-	
-$(TARGET).elf: main.o startup_stm32f091xc.o system_stm32f0xx.o utils/clock.o
+
+utils/gpio.o: utils/gpio.c
+	$(CC) -c $(CFLAGS) $(INC_PATH) $< -o $@
+
+utils/uart.o: utils/uart.c
+	$(CC) -c $(CFLAGS) $(INC_PATH) $< -o $@
+
+utils/i2c.o: utils/i2c.c
+	$(CC) -c $(CFLAGS) $(INC_PATH) $< -o $@
+
+utils/debug.o: utils/debug.c
+	$(CC) -c $(CFLAGS) $(INC_PATH) $< -o $@
+
+$(TARGET).elf: main.o startup_stm32f091xc.o system_stm32f0xx.o utils/clock.o utils/gpio.o utils/uart.o utils/i2c.o utils/debug.o
 	$(CC) $^ $(LFLAGS) -o $@
 
 $(TARGET).bin: $(TARGET).elf
@@ -98,3 +110,4 @@ clean:
 	rm -f main.o
 	rm -f startup_stm32f091xc.o
 	rm -f system_stm32f0xx.o
+	rm -f ./utils/*.o
