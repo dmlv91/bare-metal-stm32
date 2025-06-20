@@ -46,6 +46,10 @@ CFLAGS += -fmessage-length=0
 CFLAGS += --specs=nosys.specs
 CFLAGS += $(INC_PATH) -D$(PART)
 
+#DEFINE WHICH PROTOCOL TO USE WITH SENSOR
+CFLAGS += -DUSE_I2C
+# CFLAGS += -DUSE_SPI
+
 # Linker directives.
 LSCRIPT = ./$(LD_SCRIPT)
 LFLAGS += -mcpu=$(MCU_SPEC)
@@ -60,7 +64,7 @@ LFLAGS += -T$(LSCRIPT)
 LFLAGS += $(LIB_PATH) 
 
 AS_SRC   =  ./startup_stm32f091xc.s
-C_SRC    =  ./main.c ./system_stm32f0xx.c ./utils/clock.c ./utils/gpio.c ./utils/uart.c ./utils/i2c.c ./utils/debug.c
+C_SRC    =  ./main.c ./system_stm32f0xx.c ./utils/clock.c ./utils/gpio.c ./utils/uart.c ./utils/i2c.c ./utils/debug.c ./sensor/BME680.c
 
 OBJS  = $(AS_SRC:.S=.o)
 OBJS += $(C_SRC:.c=.o)
@@ -93,7 +97,10 @@ utils/i2c.o: utils/i2c.c
 utils/debug.o: utils/debug.c
 	$(CC) -c $(CFLAGS) $(INC_PATH) $< -o $@
 
-$(TARGET).elf: main.o startup_stm32f091xc.o system_stm32f0xx.o utils/clock.o utils/gpio.o utils/uart.o utils/i2c.o utils/debug.o
+sensor/BME680.o: sensor/BME680.c
+	$(CC) -c $(CFLAGS) $(INC_PATH) $< -o $@
+
+$(TARGET).elf: main.o startup_stm32f091xc.o system_stm32f0xx.o utils/clock.o utils/gpio.o utils/uart.o utils/i2c.o utils/debug.o sensor/BME680.o
 	$(CC) $^ $(LFLAGS) -o $@
 
 $(TARGET).bin: $(TARGET).elf
@@ -111,3 +118,4 @@ clean:
 	rm -f startup_stm32f091xc.o
 	rm -f system_stm32f0xx.o
 	rm -f ./utils/*.o
+	rm -f ./sensor/*.o

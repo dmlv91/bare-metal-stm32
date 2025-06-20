@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include "../utils/i2c.h"
+#include "../utils/uart.h"
 
 #ifdef USE_I2C
 
@@ -26,10 +28,14 @@
 #define BME680_REG_PAR_T2_LSB 0X8A
 #define BME680_REG_PAR_T3 0X8C
 
+#define BME680_HUM_OVERSAMPLING 0X01
+#define BME680_TEMP_N_PRES_OVERSAMPLING (0X5 << 2) | (0X2 << 5)
+#define BME680_GAS_HEAT_DURATION 0X59
+#define BME680_NB_CONV 0X00
+#define BME680_RUN_GAS_1 0X01
+
 #define BME680_CHIP_ID 0x61
 #define HEATER_TARGET_TEMP 300
-
-
 
 bool initSensor (uint8_t sensor_addr);
 
@@ -38,6 +44,8 @@ void setForcedMode (uint8_t sensor_addr);
 uint8_t calcResHeatVal (uint16_t targetTemp, uint8_t sensor_addr);
 
 int calcIntTemperature (uint32_t temp_adc);
+
+int getTemperature (void);
 
 #endif
 
