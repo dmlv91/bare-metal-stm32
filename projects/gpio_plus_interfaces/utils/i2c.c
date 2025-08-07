@@ -21,8 +21,8 @@ void I2C_Config(void) {
 }
 
 void I2C_WriteRegister(uint8_t sensorAddress, uint8_t regAddress, uint8_t data) {
-    sprintf(buff, "Writing data (0x%02x)to register: 0x%02X \r\n", data, regAddress);
-    UART_Transmit((const char *)buff, strlen((char*)buff));
+    // sprintf(buff, "Writing data (0x%02x)to register: 0x%02X \r\n", data, regAddress);
+    // UART_Transmit((const char *)buff, strlen((char*)buff));
     LL_I2C_HandleTransfer(I2C1, sensorAddress, LL_I2C_ADDRESSING_MODE_7BIT, 2, LL_I2C_MODE_AUTOEND, LL_I2C_GENERATE_START_WRITE);
     LL_I2C_TransmitData8(I2C1, regAddress);
     while (!LL_I2C_IsActiveFlag_TXE(I2C1));
@@ -34,8 +34,8 @@ void I2C_WriteRegister(uint8_t sensorAddress, uint8_t regAddress, uint8_t data) 
 
 uint8_t I2C_ReadRegister(uint8_t sensorAddress, uint8_t regAddress) {
     uint8_t data = 0;
-    sprintf(buff, "Reading data from register: 0x%02X \r\n", regAddress);
-    UART_Transmit((const char*)buff, strlen((char*)buff));
+    // sprintf(buff, "Reading data from register: 0x%02X \r\n", regAddress);
+    // UART_Transmit((const char*)buff, strlen((char*)buff));
     LL_I2C_HandleTransfer(I2C1, sensorAddress << 1, LL_I2C_ADDRESSING_MODE_7BIT, 1, LL_I2C_MODE_SOFTEND, LL_I2C_GENERATE_START_WRITE);
     LL_I2C_TransmitData8(I2C1, regAddress);
     while (!LL_I2C_IsActiveFlag_TXE(I2C1));

@@ -18,7 +18,8 @@ void _init(void) {}
 
 int main(void)
 {
-    
+    int degreesCel;
+    int milidegreesCel;
     // uint8_t typedef byte;
     initClock();
     initGPIO();
@@ -34,25 +35,15 @@ int main(void)
     // debugRegisters(INTERFACE_CLOCK);
  
 
-    // Configure outputs
-    setGPIO(GPIOA, LL_GPIO_PIN_5, LL_GPIO_MODE_OUTPUT, LL_GPIO_OUTPUT_PUSHPULL, LL_GPIO_SPEED_FREQ_LOW, LL_GPIO_PULL_NO,0);
     
-    //UART
-    setGPIO(GPIOA, LL_GPIO_PIN_9, LL_GPIO_MODE_ALTERNATE, LL_GPIO_OUTPUT_PUSHPULL, LL_GPIO_SPEED_FREQ_HIGH, LL_GPIO_PULL_NO, LL_GPIO_AF_1);
-    setGPIO(GPIOA, LL_GPIO_PIN_10, LL_GPIO_MODE_ALTERNATE, 0,LL_GPIO_SPEED_FREQ_HIGH, LL_GPIO_PULL_NO,LL_GPIO_AF_1);
-    
-    //I2C
-    setGPIO(GPIOB, LL_GPIO_PIN_9,LL_GPIO_MODE_ALTERNATE, LL_GPIO_OUTPUT_OPENDRAIN, LL_GPIO_SPEED_FREQ_HIGH,LL_GPIO_PULL_NO, LL_GPIO_AF_1); 
-    setGPIO(GPIOB, LL_GPIO_PIN_8, LL_GPIO_MODE_ALTERNATE, 0, LL_GPIO_SPEED_FREQ_HIGH, LL_GPIO_PULL_NO, LL_GPIO_AF_1);
-    
-    //MCO clock debug pins
-    setGPIO(GPIOA, LL_GPIO_PIN_8, LL_GPIO_MODE_ALTERNATE, LL_GPIO_OUTPUT_PUSHPULL, LL_GPIO_SPEED_FREQ_HIGH, LL_GPIO_PULL_NO, LL_GPIO_AF_0);
-    
-    //Configure inputs
-    setGPIO(GPIOC, LL_GPIO_PIN_13, LL_GPIO_MODE_INPUT,0,LL_GPIO_SPEED_FREQ_LOW,LL_GPIO_PULL_NO,0);
-    
+
+    // sprintf(buffer, "SEARCHING FOR DISPLAY DRIVER PCB.....\r\n");
+    // UART_Transmit((const char*)buffer, strlen((char*)buffer));
+
     // scanBus();
 
+    sprintf(buffer, "###################################################################### \r\n");
+    UART_Transmit((const char*)buffer, strlen((char*)buffer));
     sprintf(buffer, "START SENSOR INIT \r\n");
     UART_Transmit((const char*)buffer, strlen((char*)buffer));
 
@@ -61,10 +52,23 @@ int main(void)
         sprintf(buffer, "SENSOR INIT COMPLETE. PROCEED WITH TEMPERATURE READING \r\n");
         UART_Transmit((const char*)buffer, strlen((char*)buffer));
         
-        int currentTemp = getTemperature();
+        
+        while (1)
+        {
+            
+            int temp = getTemperature();
+            degreesCel = temp/100;
+            milidegreesCel = temp % 100; 
+            LL_GPIO_TogglePin(GPIOA, LL_GPIO_PIN_5);
+            sprintf(buffer, "Current temperature:  %d.%02d%s\r\n", degreesCel, milidegreesCel,"C");
+            UART_Transmit((const char*)buffer, strlen((char*)buffer));
+    
+            // Simple delay
+            for (volatile int i = 0; i < 5000000; i++);
+        }
+    
+        return 0;
 
-        sprintf(buffer, "Real temperature:  %d\r\n", currentTemp);
-        UART_Transmit((const char*)buffer, strlen((char*)buffer));
         
     } else {
         sprintf(buffer, "Sensor initialization error. Check I2C data bus and sensor\r\n");
@@ -74,14 +78,4 @@ int main(void)
 
 
     // Main loop
-    while (1)
-    {
-        
-        LL_GPIO_TogglePin(GPIOA, LL_GPIO_PIN_5);
-
-        // Simple delay
-        for (volatile int i = 0; i < 1000000; i++);
-    }
-
-    return 0;
 }
