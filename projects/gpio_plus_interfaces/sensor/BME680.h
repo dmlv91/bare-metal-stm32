@@ -59,11 +59,11 @@
 #define BME680_REG_PAR_H1_LSB 0XE2
 #define BME680_REG_PAR_H2_MSB 0XE1
 #define BME680_REG_PAR_H2_LSB 0XE2
-#define BME680_REG_PAR_H3_LSB 0XE4
-#define BME680_REG_PAR_H4_LSB 0XE5
-#define BME680_REG_PAR_H5_LSB 0XE6
-#define BME680_REG_PAR_H6_LSB 0XE7
-#define BME680_REG_PAR_H7_LSB 0XE8
+#define BME680_REG_PAR_H3 0XE4
+#define BME680_REG_PAR_H4 0XE5
+#define BME680_REG_PAR_H5 0XE6
+#define BME680_REG_PAR_H6 0XE7
+#define BME680_REG_PAR_H7 0XE8
 
 #define BME680_HUM_OVERSAMPLING 0X01
 #define BME680_TEMP_N_PRES_OVERSAMPLING (0X5 << 2) | (0X2 << 5)
@@ -77,6 +77,8 @@
 bool initSensor (uint8_t sensor_addr);
 
 void setForcedMode (uint8_t sensor_addr);
+void triggerMeasurementCycle(void);
+void readCalibrationData(void);
 
 uint8_t calcResHeatVal (uint16_t targetTemp, uint8_t sensor_addr);
 

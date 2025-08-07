@@ -51,7 +51,7 @@ int main(void)
 
         sprintf(buffer, "SENSOR INIT COMPLETE. PROCEED WITH TEMPERATURE READING \r\n");
         UART_Transmit((const char*)buffer, strlen((char*)buffer));
-        
+        setForcedMode(BME680_I2C_ADDR);
         
         while (1)
         {

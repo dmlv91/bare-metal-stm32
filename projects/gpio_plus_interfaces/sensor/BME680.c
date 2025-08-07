@@ -3,6 +3,47 @@
 uint8_t dbg;
 char writeBuffer[100];
 uint8_t sensorAddress;
+
+typedef struct {
+    uint8_t par_g1;
+    uint8_t par_g3;
+    uint8_t par_g2_msb;
+    uint8_t par_g2_lsb;
+    uint8_t par_t1_msb;
+    uint8_t par_t1_lsb;
+    uint8_t par_t2_msb;
+    uint8_t par_t2_lsb;
+    uint8_t par_t3;
+    uint8_t par_p1_msb;
+    uint8_t par_p1_lsb;
+    uint8_t par_p2_msb;
+    uint8_t par_p2_lsb;
+    uint8_t par_p3;
+    uint8_t par_p4_msb;
+    uint8_t par_p4_lsb;
+    uint8_t par_p5_msb;
+    uint8_t par_p5_lsb;
+    uint8_t par_p6;
+    uint8_t par_p7;
+    uint8_t par_p8_msb;
+    uint8_t par_p8_lsb;
+    uint8_t par_p9_msb;
+    uint8_t par_p9_lsb;
+    uint8_t par_p10;
+    uint8_t par_h1_msb;
+    uint8_t par_h1_lsb;
+    uint8_t par_h2_msb;
+    uint8_t par_h2_lsb;
+    uint8_t par_h3;
+    uint8_t par_h4;
+    uint8_t par_h5;
+    uint8_t par_h6;
+    uint8_t par_h7;
+    uint8_t res_heat_range;
+
+} bme680_calib_data;
+
+bme680_calib_data calib;
 //res_heat value calculation corresponding to BME680 datasheet  
 uint8_t calcResHeatVal(uint16_t targetTemp, uint8_t sensorAddress) {
     int amb_temp = 25;
@@ -11,19 +52,15 @@ uint8_t calcResHeatVal(uint16_t targetTemp, uint8_t sensorAddress) {
     float var3;
     float var4;
     float var5;
-    uint8_t par_g1 = I2C_ReadRegister(sensorAddress, BME680_REG_PAR_G1);
-    uint8_t par_g3 = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_G3);
-    uint8_t par_g2_msb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_G2_MSB);
-    uint8_t par_g2_lsb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_G2_LSB);
-    uint8_t res_heat_range = I2C_ReadRegister(sensorAddress, BME680_REG_RES_HEAT_RANGE_MASK);
+    
     uint8_t res_heat_val = I2C_ReadRegister(sensorAddress,BME680_REG_RES_HEAT_VAL);
-    uint16_t par_g2 = (par_g2_msb << 8) | par_g2_lsb;
-    var1 = ((double)par_g1/16.0f) + 49.0f;
+    uint16_t par_g2 = (calib.par_g2_msb << 8) | calib.par_g2_lsb;
+    var1 = ((double)calib.par_g1/16.0f) + 49.0f;
     var2 = (((double)par_g2/32768.0f)*0.0005f) + 0.00235f;
-    var3 = (double)par_g3/1024.0f;
+    var3 = (double)calib.par_g3/1024.0f;
     var4 = var1 * (1.0f + (var2*(double)targetTemp));
     var5 = var4 + (var3*(double)amb_temp);
-    uint8_t res_heat = (uint8_t)(3.4f*((var5*(4.0f/(4.0f+(double)res_heat_range))*(1.0f/(1.0f+((double)res_heat_val*0.002f))))-25));
+    uint8_t res_heat = (uint8_t)(3.4f*((var5*(4.0f/(4.0f+(double)calib.res_heat_range))*(1.0f/(1.0f+((double)res_heat_val*0.002f))))-25));
 
     // sprintf(writeBuffer, "CALCULATED_RES_HEAT: 0x%02X \r\n", res_heat);
     // UART_Transmit((const char*)writeBuffer, strlen((char*)writeBuffer));
@@ -85,7 +122,7 @@ void setForcedMode(uint8_t sensorAddress) {
     // sprintf(writeBuffer, "ctrl_gas_1: 0x%02X \r\n", dbg);
     // UART_Transmit((const char*)writeBuffer, strlen((char*)writeBuffer));
 
-
+    
 }
 
 
@@ -95,17 +132,14 @@ int calcIntTemperature(uint32_t temp_adc) {
     int var2;
     int var3;
 
-    uint8_t par_t1_msb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_T1_MSB);
-    uint8_t par_t1_lsb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_T1_LSB);
-    uint8_t par_t2_msb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_T2_MSB);
-    uint8_t par_t2_lsb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_T2_LSB);
-    uint16_t par_t1 = par_t1_lsb | (par_t1_msb << 8);
-    uint16_t par_t2 = par_t2_lsb | (par_t2_msb << 8);
-    uint8_t par_t3 = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_T3);
+    
+    uint16_t par_t1 = calib.par_t1_lsb | (calib.par_t1_msb << 8);
+    uint16_t par_t2 = calib.par_t2_lsb | (calib.par_t2_msb << 8);
+    
 
     var1 = ((int32_t)temp_adc >> 3) - ((int32_t)par_t1 << 1);
     var2 = (var1*(int32_t)par_t2) >> 11;
-    var3 = ((((var1 >> 1)* (var1 >> 1))>>12)*((int32_t)par_t3 << 4)) >> 14;
+    var3 = ((((var1 >> 1)* (var1 >> 1))>>12)*((int32_t)calib.par_t3 << 4)) >> 14;
     int t_fine = var2+var3;
     int temp_comp = ((t_fine*5)+128) >> 8;
 
@@ -114,7 +148,23 @@ int calcIntTemperature(uint32_t temp_adc) {
 }
 
 int calcIntPressure(uint32_t press_adc) {
-    
+
+    uint16_t par_p1 = calib.par_p1_lsb | (calib.par_p1_msb << 8);
+    uint16_t par_p2 = calib.par_p2_lsb | (calib.par_p2_msb << 8);
+
+    return 0;
+
+}
+
+// short calcIntHumidity(uint16_t hum_adc) {
+
+// }
+
+void triggerMeasurementCycle(void) {
+    //change measuring mode to enable one forced measurment cycle (Set only first bit).
+    uint8_t ctrl_meas_val = I2C_ReadRegister(sensorAddress,BME680_REG_CTRL_MEAS);
+    I2C_WriteRegister((sensorAddress << 1), BME680_REG_CTRL_MEAS, (ctrl_meas_val |= (1 << 0)));
+    while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
 }
 
 int getTemperature(void) {
@@ -122,7 +172,8 @@ int getTemperature(void) {
     // sprintf(writeBuffer, "--------------------------------------------------------------------\r\n");
     // UART_Transmit((const char*)writeBuffer, strlen((char*)writeBuffer));
 
-    setForcedMode(sensorAddress);
+    
+    triggerMeasurementCycle();
 
     // sprintf(writeBuffer, "--------------------------------------------------------------------\r\n");
     // UART_Transmit((const char*)writeBuffer, strlen((char*)writeBuffer));
@@ -131,10 +182,7 @@ int getTemperature(void) {
 
     // sprintf(writeBuffer, "Write 0x01 to 0x74.\r\n");
     // UART_Transmit((const char*)writeBuffer, strlen((char*)writeBuffer));
-    //change measuring mode to enable one forced measurment cycle (Set only first bit).
-    uint8_t ctrl_meas_val = I2C_ReadRegister(sensorAddress,BME680_REG_CTRL_MEAS);
-    I2C_WriteRegister((sensorAddress << 1), BME680_REG_CTRL_MEAS, (ctrl_meas_val |= (1 << 0)));
-    while(!LL_I2C_IsActiveFlag_TXE && LL_I2C_IsActiveFlag_RXNE);
+    
 
     // dbg = I2C_ReadRegister(sensorAddress,BME680_REG_CTRL_MEAS);
     // sprintf(writeBuffer, "ctrl_meas--------->: 0x%02X \r\n", dbg);
@@ -143,8 +191,8 @@ int getTemperature(void) {
     // sprintf(writeBuffer, "MODE CHANGED. CHECK NEW DATA FLAG VALUE.\r\n");
     // UART_Transmit((const char*)writeBuffer, strlen((char*)writeBuffer));
 
-    uint8_t meas_status_0 = 0x1D;
-    uint8_t newDataFlag = I2C_ReadRegister(sensorAddress, meas_status_0);
+    // uint8_t meas_status_0 = 0x1D;
+    // uint8_t newDataFlag = I2C_ReadRegister(sensorAddress, meas_status_0);
     //print only 7th bit. If new data exists, 0x8 will be returned, otherwise 0.
     // sprintf(writeBuffer, "New Data: 0x%02X \r\n", newDataFlag );
     // UART_Transmit((const char*)writeBuffer, strlen((char*)writeBuffer));
@@ -175,8 +223,7 @@ int getTemperature(void) {
 
 int getPressure(void) {
 
-    setForcedMode(sensorAddress);
-
+    triggerMeasurementCycle();
     uint8_t press_msb = I2C_ReadRegister(sensorAddress, BME680_REG_PRESS_MSB);
     uint8_t press_lsb = I2C_ReadRegister(sensorAddress, BME680_REG_PRESS_LSB);
     uint8_t press_xlsb = I2C_ReadRegister(sensorAddress, BME680_REG_PRESS_XLSB);
@@ -187,6 +234,57 @@ int getPressure(void) {
     return realPress;
 }
 
+// int getHumidity(void) {
+
+//     // setForcedMode(sensorAddress);
+//     triggerMeasurementCycle();
+//     uint8_t hum_msb = I2C_ReadRegister(sensorAddress, BME680_REG_PRESS_MSB);
+//     uint8_t hum_lsb = I2C_ReadRegister(sensorAddress, BME680_REG_PRESS_LSB);
+
+//     uint16_t hum_adc = hum_lsb | (hum_msb << 8);
+//     int realPress = calcIntHumidity(hum_adc);
+
+//     return realPress;
+// }
+
+void readCalibrationData() {
+    calib.par_g1 = I2C_ReadRegister(sensorAddress, BME680_REG_PAR_G1);
+    calib.par_g3 = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_G3);
+    calib.par_g2_msb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_G2_MSB);
+    calib.par_g2_lsb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_G2_LSB);
+    calib.res_heat_range = I2C_ReadRegister(sensorAddress, BME680_REG_RES_HEAT_RANGE_MASK);
+    calib.par_t1_msb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_T1_MSB);
+    calib.par_t1_lsb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_T1_LSB);
+    calib.par_t2_msb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_T2_MSB);
+    calib.par_t2_lsb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_T2_LSB);
+    calib.par_t3 = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_T3);
+    calib.par_p1_msb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P1_MSB);
+    calib.par_p1_lsb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P1_LSB);
+    calib.par_p2_msb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P2_MSB);
+    calib.par_p2_lsb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P2_LSB);
+    calib.par_p3 = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P3);
+    calib.par_p4_msb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P4_MSB);
+    calib.par_p4_lsb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P4_LSB);
+    calib.par_p5_msb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P5_MSB);
+    calib.par_p5_lsb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P5_LSB);
+    calib.par_p6 = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P6);
+    calib.par_p7 = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P7);
+    calib.par_p8_msb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P8_MSB);
+    calib.par_p8_lsb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P8_LSB);
+    calib.par_p9_msb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P9_MSB);
+    calib.par_p9_lsb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P9_LSB);
+    calib.par_p10 = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_P10);
+    calib.par_h1_msb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_H1_MSB);
+    calib.par_h1_lsb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_H1_LSB);
+    calib.par_h2_msb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_H2_MSB);
+    calib.par_h2_lsb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_H2_LSB);
+    calib.par_h3 = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_H3);
+    calib.par_h4 = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_H4);
+    calib.par_h5 = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_H5);
+    calib.par_h6 = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_H6);
+    calib.par_h7 = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_H7);
+}
+
 bool initSensor(uint8_t sensor_addr) {
     uint8_t BME_680_ID = 0xD0;
     uint8_t chip_ID = I2C_ReadRegister(sensor_addr,BME_680_ID);
@@ -195,6 +293,8 @@ bool initSensor(uint8_t sensor_addr) {
     UART_Transmit((const char*)writeBuffer, strlen((char*)writeBuffer));
     if (chip_ID == BME680_CHIP_ID) {
         sensorAddress = sensor_addr;
+        readCalibrationData();
+        setForcedMode(sensorAddress);
         return true;
     } else {
         return false;
