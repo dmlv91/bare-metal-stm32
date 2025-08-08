@@ -3,7 +3,8 @@
 uint8_t dbg;
 char writeBuffer[100];
 uint8_t sensorAddress;
-
+int t_fine;
+int temp_comp;
 typedef struct {
     uint8_t par_g1;
     uint8_t par_g3;
@@ -45,7 +46,7 @@ typedef struct {
 
 bme680_calib_data calib;
 //res_heat value calculation corresponding to BME680 datasheet  
-uint8_t calcResHeatVal(uint16_t targetTemp, uint8_t sensorAddress) {
+static uint8_t calcResHeatVal(uint16_t targetTemp, uint8_t sensorAddress) {
     int amb_temp = 25;
     float var1;
     float var2;
@@ -70,7 +71,7 @@ uint8_t calcResHeatVal(uint16_t targetTemp, uint8_t sensorAddress) {
 
 }
 
-void setForcedMode(uint8_t sensorAddress) {
+static void setForcedMode(uint8_t sensorAddress) {
 
     //Set humidity oversampling to 1x by writing 0x01 to 0x72
 
@@ -127,7 +128,7 @@ void setForcedMode(uint8_t sensorAddress) {
 
 
 
-int calcIntTemperature(uint32_t temp_adc) {
+static int calcIntTemperature(uint32_t temp_adc) {
     int var1;
     int var2;
     int var3;
@@ -140,27 +141,90 @@ int calcIntTemperature(uint32_t temp_adc) {
     var1 = ((int32_t)temp_adc >> 3) - ((int32_t)par_t1 << 1);
     var2 = (var1*(int32_t)par_t2) >> 11;
     var3 = ((((var1 >> 1)* (var1 >> 1))>>12)*((int32_t)calib.par_t3 << 4)) >> 14;
-    int t_fine = var2+var3;
-    int temp_comp = ((t_fine*5)+128) >> 8;
+    t_fine = var2+var3;
+    temp_comp = ((t_fine*5)+128) >> 8;
 
-    return temp_comp;
+    return (uint32_t)temp_comp;
 
 }
 
-int calcIntPressure(uint32_t press_adc) {
+static uint32_t calcIntPressure(uint32_t press_adc) {
+
+    int32_t var1;
+    int32_t var2;
+    int32_t var3;
+    int32_t press_comp;
 
     uint16_t par_p1 = calib.par_p1_lsb | (calib.par_p1_msb << 8);
     uint16_t par_p2 = calib.par_p2_lsb | (calib.par_p2_msb << 8);
+    uint16_t par_p4 = calib.par_p4_lsb | (calib.par_p4_msb << 8);
+    uint16_t par_p5 = calib.par_p5_lsb | (calib.par_p5_msb << 8);
+    uint16_t par_p8 = calib.par_p8_lsb | (calib.par_p8_msb << 8);
+    uint16_t par_p9 = calib.par_p9_lsb | (calib.par_p9_msb << 8);
 
-    return 0;
+    var1 = (((int32_t)t_fine) >> 1) - 64000;
+    var2 = ((((var1 >> 2)*(var1 >> 2)) >> 11)* (int32_t)calib.par_p6) >> 2;
+    var2 = var2 + ((var1 * (int32_t)par_p5) << 1);
+    var2 = (var2 >> 2) + ((int32_t)par_p4 << 16);
+    var1 = (((((var1 >> 2)*(var1 >> 2)) >> 13)*((int32_t)calib.par_p3 << 5)) >> 3) +
+        (((int32_t)par_p2 * var1) >> 1);
+    var1 = var1 >> 18;
+    var1 = ((32768 + var1)*(int32_t)par_p1) >> 15;
+    press_comp = 1048576 - press_adc;
+    press_comp = (uint32_t)((press_comp - (var2 >> 12))*((uint32_t)3125));
+    if (press_comp >= (1 << 30)) {
+        press_comp = ((press_comp/(uint32_t)var1) << 1);
+    } else {
+        press_comp = ((press_comp << 1)/(uint32_t)var1);
+    }
+    var1 = ((int32_t)par_p9*(int32_t)(((press_comp >> 3) * (press_comp >> 3))>>13)) >> 12;
+    var2 = ((int32_t)(press_comp >> 2)*(int32_t)par_p8) >> 13;
+    var3 = ((int32_t)(press_comp >> 8)*(int32_t)(press_comp >> 8) *
+        (int32_t)(press_comp >> 8) *(int32_t)calib.par_p10) >> 17;
+    press_comp = (int32_t)(press_comp)+((var1 + var2 + var3 + ((int32_t)calib.par_p7 << 7)) >> 4);
+
+    return (uint32_t)press_comp;
 
 }
 
-// short calcIntHumidity(uint16_t hum_adc) {
+static uint32_t calcIntHumidity(uint16_t hum_adc) {
+    int32_t var1;
+    int32_t var2;
+    int32_t var3;
+    int32_t var4;
+    int32_t var5;
+    int32_t var6;
+    int32_t temp_scaled;
+    int32_t hum_comp;
 
-// }
+    uint16_t par_h1 = calib.par_h1_lsb | (calib.par_h1_msb << 8);
+    uint16_t par_h2 = calib.par_h2_lsb | (calib.par_h2_msb << 8);
 
-void triggerMeasurementCycle(void) {
+    temp_scaled = (int32_t)temp_comp;
+    var1 = (int32_t)(hum_adc - ((int32_t)((int32_t)par_h1 << 4))) -
+           (((temp_scaled * (int32_t)calib.par_h3) / ((int32_t)100)) >> 1);
+    var2 = ((int32_t)par_h2 * (((temp_scaled * (int32_t)calib.par_h4) / ((int32_t)100)) +
+          (((temp_scaled * ((temp_scaled * (int32_t)calib.par_h5) / ((int32_t)100))) >> 6) / ((int32_t)100)) +
+          ((int32_t)(1 << 14)))) >> 10;
+    var3 = var1 * var2;
+    var4 = (((int32_t)calib.par_h6 << 7) + ((temp_scaled * (int32_t)calib.par_h7) / ((int32_t)100))) >> 4;
+    var5 = ((var3 >> 14) * (var3 >> 14)) >> 10;
+    var6 = (var4 * var5) >> 1;
+    hum_comp = (((var3 + var6) >> 10) * ((int32_t)1000)) >> 12;
+    sprintf(writeBuffer, "temp_scaled %d;  hum_comp %d\r\n", temp_scaled,hum_comp);
+    UART_Transmit((const char*)writeBuffer, strlen((char*)writeBuffer));
+    // if (hum_comp > 100000) /* Cap at 100%rH */
+    // {
+    //     hum_comp = 100000;
+    // }
+    // else if (hum_comp < 0)
+    // {
+    //     hum_comp = 0;
+    // }
+    return (uint32_t)hum_comp;
+}
+
+static void triggerMeasurementCycle(void) {
     //change measuring mode to enable one forced measurment cycle (Set only first bit).
     uint8_t ctrl_meas_val = I2C_ReadRegister(sensorAddress,BME680_REG_CTRL_MEAS);
     I2C_WriteRegister((sensorAddress << 1), BME680_REG_CTRL_MEAS, (ctrl_meas_val |= (1 << 0)));
@@ -229,25 +293,24 @@ int getPressure(void) {
     uint8_t press_xlsb = I2C_ReadRegister(sensorAddress, BME680_REG_PRESS_XLSB);
 
     uint32_t press_adc = ((uint32_t)press_msb << 12) | ((uint32_t)press_lsb << 4) | (press_xlsb >> 4);
-    int realPress = calcIntPressure(press_adc);
+    uint32_t realPress = calcIntPressure(press_adc);
 
     return realPress;
 }
 
-// int getHumidity(void) {
+int getHumidity(void) {
 
-//     // setForcedMode(sensorAddress);
-//     triggerMeasurementCycle();
-//     uint8_t hum_msb = I2C_ReadRegister(sensorAddress, BME680_REG_PRESS_MSB);
-//     uint8_t hum_lsb = I2C_ReadRegister(sensorAddress, BME680_REG_PRESS_LSB);
+    triggerMeasurementCycle();
+    uint8_t hum_msb = I2C_ReadRegister(sensorAddress, BME680_REG_PRESS_MSB);
+    uint8_t hum_lsb = I2C_ReadRegister(sensorAddress, BME680_REG_PRESS_LSB);
 
-//     uint16_t hum_adc = hum_lsb | (hum_msb << 8);
-//     int realPress = calcIntHumidity(hum_adc);
+    uint16_t hum_adc = hum_lsb | (hum_msb << 8);
+    uint32_t realHumidity = calcIntHumidity(hum_adc);
 
-//     return realPress;
-// }
+    return realHumidity;
+}
 
-void readCalibrationData() {
+static void readCalibrationData() {
     calib.par_g1 = I2C_ReadRegister(sensorAddress, BME680_REG_PAR_G1);
     calib.par_g3 = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_G3);
     calib.par_g2_msb = I2C_ReadRegister(sensorAddress,BME680_REG_PAR_G2_MSB);

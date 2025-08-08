@@ -83,8 +83,8 @@ void readCalibrationData(void);
 uint8_t calcResHeatVal (uint16_t targetTemp, uint8_t sensor_addr);
 
 int calcIntTemperature (uint32_t temp_adc);
-int calcIntPressure (uint32_t press_adc);
-int calcIntHumidity (uint32_t hum_adc);
+uint32_t calcIntPressure (uint32_t press_adc);
+uint32_t calcIntHumidity (uint16_t hum_adc);
 
 int getTemperature (void);
 int getPressure (void);

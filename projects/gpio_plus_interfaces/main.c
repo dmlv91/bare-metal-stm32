@@ -20,6 +20,8 @@ int main(void)
 {
     int degreesCel;
     int milidegreesCel;
+    int pascals;
+    int milipascals;
     // uint8_t typedef byte;
     initClock();
     initGPIO();
@@ -49,18 +51,25 @@ int main(void)
 
     if (initSensor(BME680_I2C_ADDR)) {
 
-        sprintf(buffer, "SENSOR INIT COMPLETE. PROCEED WITH TEMPERATURE READING \r\n");
+        sprintf(buffer, "SENSOR INIT COMPLETE. PROCEED WITH DATA READOUT \r\n");
         UART_Transmit((const char*)buffer, strlen((char*)buffer));
-        setForcedMode(BME680_I2C_ADDR);
         
         while (1)
         {
             
             int temp = getTemperature();
+            int press = getPressure();
+            int hum = getHumidity();
             degreesCel = temp/100;
-            milidegreesCel = temp % 100; 
+            milidegreesCel = temp % 100;
+            pascals = press/1000;
+            milipascals = press % 1000;
             LL_GPIO_TogglePin(GPIOA, LL_GPIO_PIN_5);
             sprintf(buffer, "Current temperature:  %d.%02d%s\r\n", degreesCel, milidegreesCel,"C");
+            UART_Transmit((const char*)buffer, strlen((char*)buffer));
+            sprintf(buffer, "Current pressure:  %d.%02d%s\r\n", pascals,milipascals,"kPa");
+            UART_Transmit((const char*)buffer, strlen((char*)buffer));
+            sprintf(buffer, "Current humidity:  %d%s\r\n", hum,"rH");
             UART_Transmit((const char*)buffer, strlen((char*)buffer));
     
             // Simple delay
@@ -75,7 +84,4 @@ int main(void)
         UART_Transmit((const char*)buffer, strlen((char*)buffer));
     }
     
-
-
-    // Main loop
 }
